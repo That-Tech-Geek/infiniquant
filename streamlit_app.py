@@ -119,21 +119,38 @@ if not update_queue.empty():
         st.session_state['data_updated'] = False # Reset signal
 
 # --- UI for Filtering ---
-all_strategy_types = ["All"] + sorted(list(set(
+# Get unique strategy types from session state data
+strategy_types_from_data = sorted(list(set(
     s.get("Strategy_Type") for s in st.session_state['strategies_data'] if s.get("Strategy_Type")
 )))
 
+# Base strategies
+base_strategies = ["RSI_ONLY", "MACD_ONLY", "SMA_CROSSOVER", "EMA_CROSSOVER", "BB_BOUNCE", 
+                   "RSI_SENTIMENT", "MACD_SENTIMENT", "SMA_SENTIMENT", "ML_PREDICT", 
+                   "FF_INSPIRED_STRATEGY"]
+
+# Combine all strategies, prioritizing the selected one
+all_strategy_types_set = list(dict.fromkeys(base_strategies + strategy_types_from_data))  # Removes duplicates while preserving order
+selected = st.session_state.get('selected_strategy_type')
+
+if selected and selected in all_strategy_types_set:
+    all_strategy_types = [selected] + [s for s in all_strategy_types_set if s != selected]
+else:
+    all_strategy_types = all_strategy_types_set
+
+# Select box
 selected_type = st.selectbox(
     "Select Strategy Type:",
     options=all_strategy_types,
     key="strategy_type_selector",
-    index=all_strategy_types.index(st.session_state['selected_strategy_type']) if st.session_state['selected_strategy_type'] in all_strategy_types else 0
+    index=0  # Already positioned selected at top
 )
 
-# Update session state if selection changes
-if selected_type != st.session_state['selected_strategy_type']:
+# Update session state and rerun if changed
+if selected_type != st.session_state.get('selected_strategy_type'):
     st.session_state['selected_strategy_type'] = selected_type
-    st.rerun() # Rerun to apply filter immediately
+    st.rerun()
+
 
 # --- Display Strategies ---
 st.subheader("Available Strategies")
