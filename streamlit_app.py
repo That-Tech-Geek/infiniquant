@@ -18,43 +18,44 @@ FIRESTORE_COLLECTION_NAME = "quant_strategies" # The name of your collection for
 
 # --- Firestore Client Initialization (Cached) ---
 @st.cache_resource
+@st.cache_resource
 def get_firestore_client():
-    """Initializes and returns a Firestore client.
-    
-    Expects GOOGLE_APPLICATION_CREDENTIALS to be set to the path of your
-    service account key JSON file.
-    """
     try:
-        # Check if running in a Streamlit Cloud environment or if credentials are explicitly set
         if "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ and "gcp_service_account" in st.secrets:
-            # Use Streamlit secrets for service account credentials if available
             st.warning("Using Streamlit secrets for GCP service account. Ensure 'gcp_service_account' is configured.")
-            
-            # Create a temporary file for the service account key
+
+            # Prepare the secrets file path
             secrets_path = os.path.join(os.getcwd(), ".streamlit", "gcp_service_account.json")
             os.makedirs(os.path.dirname(secrets_path), exist_ok=True)
-            
-            creds_dict = dict(st.secrets["gcp_service_account"])
-            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
-            
+
+            # Convert AttrDict to dict and replace escaped newlines
+            service_account_info = dict(st.secrets["gcp_service_account"])
+            if "\\n" in service_account_info["private_key"]:
+                service_account_info["private_key"] = service_account_info["private_key"].replace("\\n", "\n")
+
+            # Write to file
             with open(secrets_path, "w") as f:
-                json.dump(creds_dict, f)
+                json.dump(service_account_info, f)
+
+            # Set environment variable for the session
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = secrets_path
-        
+
         elif "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ:
             st.error(
                 "Environment variable GOOGLE_APPLICATION_CREDENTIALS not set. "
                 "Please set it to the path of your Firestore service account key JSON file, "
                 "or configure 'gcp_service_account' in Streamlit secrets."
             )
-            st.stop() # Stop the app if credentials are not found
-        
+            st.stop()
+
+        # Initialize Firestore client
         db = firestore_v1.Client(project=GOOGLE_CLOUD_PROJECT_ID)
         st.success("Successfully initialized Firestore client.")
         return db
+
     except Exception as e:
         st.error(f"Error initializing Firestore: {e}")
-        st.stop() # Stop the app if initialization fails
+        st.stop()
 
 # --- Global Queue for Real-time Updates ---
 # This queue will hold data pushed from the Firestore listener's background thread.
