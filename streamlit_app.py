@@ -19,43 +19,24 @@ FIRESTORE_COLLECTION_NAME = "quant_strategies" # The name of your collection for
 # --- Firestore Client Initialization (Cached) ---
 @st.cache_resource
 @st.cache_resource
+@st.cache_resource
 def get_firestore_client():
+    """Initializes Firestore using credentials from Streamlit secrets."""
     try:
-        if "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ and "gcp_service_account" in st.secrets:
-            st.warning("Using Streamlit secrets for GCP service account. Ensure 'gcp_service_account' is configured.")
+        from google.oauth2 import service_account
 
-            # Prepare the secrets file path
-            secrets_path = os.path.join(os.getcwd(), ".streamlit", "gcp_service_account.json")
-            os.makedirs(os.path.dirname(secrets_path), exist_ok=True)
+        credentials = service_account.Credentials.from_service_account_info(
+            dict(st.secrets["gcp_service_account"])
+        )
 
-            # Convert AttrDict to dict and replace escaped newlines
-            service_account_info = dict(st.secrets["gcp_service_account"])
-            if "\\n" in service_account_info["private_key"]:
-                service_account_info["private_key"] = service_account_info["private_key"].replace("\\n", "\n")
-
-            # Write to file
-            with open(secrets_path, "w") as f:
-                json.dump(service_account_info, f)
-
-            # Set environment variable for the session
-            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = secrets_path
-
-        elif "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ:
-            st.error(
-                "Environment variable GOOGLE_APPLICATION_CREDENTIALS not set. "
-                "Please set it to the path of your Firestore service account key JSON file, "
-                "or configure 'gcp_service_account' in Streamlit secrets."
-            )
-            st.stop()
-
-        # Initialize Firestore client
-        db = firestore_v1.Client(project=GOOGLE_CLOUD_PROJECT_ID)
+        db = firestore_v1.Client(project=st.secrets["gcp_service_account"]["project_id"], credentials=credentials)
         st.success("Successfully initialized Firestore client.")
         return db
 
     except Exception as e:
         st.error(f"Error initializing Firestore: {e}")
         st.stop()
+
 
 # --- Global Queue for Real-time Updates ---
 # This queue will hold data pushed from the Firestore listener's background thread.
