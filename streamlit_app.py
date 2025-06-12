@@ -42,7 +42,7 @@ def on_snapshot(col_snapshot, changes, read_time):
     st.session_state['data_updated'] = True
 
 def setup_firestore_listener(db_client, data_q):
-    collection_path = f"artifacts/{FIRESTORE_APP_ID}/public/data/{FIRESTORE_COLLECTION_NAME}"
+    collection_path = f"artifacts/infiniquant-da402/public/data/{FIRESTORE_COLLECTION_NAME}"
     try:
         collection_ref = db_client.collection(collection_path)
         collection_watch = collection_ref.on_snapshot(on_snapshot)
