@@ -61,7 +61,6 @@ def on_snapshot(col_snapshot, changes, read_time):
     st.session_state['data_updated'] = True # Signal that new data is available
 
 # --- Setup Firestore Listener in a Background Thread ---
-@st.cache_resource(hash_funcs={threading.Thread: lambda _: None})
 def setup_firestore_listener(db_client, data_q):
     """Sets up the Firestore real-time listener in a separate thread.
     
