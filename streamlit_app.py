@@ -4,73 +4,47 @@ import os
 import json
 import threading
 import queue
-import time # For simulating initial data load
+import time
 
-# --- Configuration ---
-# IMPORTANT: Replace with your actual project ID and collection paths.
-# For local development, ensure GOOGLE_APPLICATION_CREDENTIALS environment variable
-# points to your service account key file.
-# For deployment, follow Streamlit's guide for secrets management or
-# your hosting platform's method for setting environment variables.
-GOOGLE_CLOUD_PROJECT_ID = "infiniquant-da402" # e.g., "my-quant-project-12345"
-FIRESTORE_APP_ID = "1:608512799755:web:def0b365b005ef6166c30e" # A chosen identifier for your app within Firestore
-FIRESTORE_COLLECTION_NAME = "quant_strategies" # The name of your collection for strategies
+GOOGLE_CLOUD_PROJECT_ID = "infiniquant-da402"
+FIRESTORE_APP_ID = "1:608512799755:web:def0b365b005ef6166c30e"
+FIRESTORE_COLLECTION_NAME = "quant_strategies"
 
-# --- Firestore Client Initialization (Cached) ---
-@st.cache_resource
-@st.cache_resource
 @st.cache_resource
 def get_firestore_client():
-    """Initializes Firestore using credentials from Streamlit secrets."""
     try:
         from google.oauth2 import service_account
-
         credentials = service_account.Credentials.from_service_account_info(
             dict(st.secrets["gcp_service_account"])
         )
-
-        db = firestore_v1.Client(project=st.secrets["gcp_service_account"]["project_id"], credentials=credentials)
+        db = firestore_v1.Client(
+            project=st.secrets["gcp_service_account"]["project_id"],
+            credentials=credentials
+        )
         st.success("Successfully initialized Firestore client.")
         return db
-
     except Exception as e:
         st.error(f"Error initializing Firestore: {e}")
         st.stop()
 
-
-# --- Global Queue for Real-time Updates ---
-# This queue will hold data pushed from the Firestore listener's background thread.
-# Use st.cache_resource to ensure it's a singleton across reruns.
 @st.cache_resource
 def get_update_queue():
     return queue.Queue()
 
-# --- Firestore Real-time Listener Callback ---
 def on_snapshot(col_snapshot, changes, read_time):
-    """Callback function for Firestore real-time listener."""
     current_data = []
     for doc in col_snapshot.documents:
         doc_data = doc.to_dict()
-        if doc_data: # Ensure document has data
-            doc_data['id'] = doc.id # Add document ID
+        if doc_data:
+            doc_data['id'] = doc.id
             current_data.append(doc_data)
-    
-    # Put the entire current dataset into the queue.
-    # This ensures we always have the latest state, rather than just changes.
     update_queue.put(current_data)
-    st.session_state['data_updated'] = True # Signal that new data is available
+    st.session_state['data_updated'] = True
 
-# --- Setup Firestore Listener in a Background Thread ---
 def setup_firestore_listener(db_client, data_q):
-    """Sets up the Firestore real-time listener in a separate thread.
-    
-    Returns the collection_watch object to allow detaching the listener if needed.
-    """
     collection_path = f"artifacts/{FIRESTORE_APP_ID}/public/data/{FIRESTORE_COLLECTION_NAME}"
     try:
         collection_ref = db_client.collection(collection_path)
-        
-        # Start the listener in a background thread
         collection_watch = collection_ref.on_snapshot(on_snapshot)
         st.success(f"Listening for updates on collection: {collection_path}")
         return collection_watch
@@ -78,16 +52,12 @@ def setup_firestore_listener(db_client, data_q):
         st.error(f"Error setting up Firestore listener: {e}")
         st.stop()
 
-# --- Streamlit Application ---
 st.set_page_config(layout="wide", page_title="Quant Strategy Dashboard")
+st.title("\U0001F4C8 Pre-validated Quant Strategies")
 
-st.title("📊 Pre-validated Quant Strategies")
-
-# Get Firestore client and update queue
 db = get_firestore_client()
 update_queue = get_update_queue()
 
-# Initialize session state for data storage and selected strategy type
 if 'strategies_data' not in st.session_state:
     st.session_state['strategies_data'] = []
 if 'selected_strategy_type' not in st.session_state:
@@ -95,62 +65,40 @@ if 'selected_strategy_type' not in st.session_state:
 if 'data_updated' not in st.session_state:
     st.session_state['data_updated'] = False
 
-
-# Start the Firestore listener (only once)
 if 'firestore_listener_started' not in st.session_state:
     with st.spinner("Connecting to Firestore and fetching initial data..."):
-        # We need to explicitly call the setup function to ensure it runs
-        # outside the initial Streamlit script execution, typically on app start.
-        # The `on_snapshot` will populate the queue.
         setup_firestore_firestore_listener = setup_firestore_listener(db, update_queue)
         st.session_state['firestore_listener_started'] = True
-        
-        # Simulate waiting for initial data to arrive in the queue
-        # In a real app, you might have a more sophisticated loading state
-        # or fetch initial data synchronously.
-        time.sleep(2) # Give a moment for the initial snapshot to arrive
+        time.sleep(2)
 
-# --- Process Updates from the Queue ---
-# Check the queue at the beginning of each Streamlit rerun
 if not update_queue.empty():
     with st.spinner("New data arrived! Updating strategies..."):
         latest_data = update_queue.get()
         st.session_state['strategies_data'] = latest_data
-        st.session_state['data_updated'] = False # Reset signal
+        st.session_state['data_updated'] = False
 
-# --- UI for Filtering ---
-# Get unique strategy types from session state data
 strategy_types_from_data = sorted(list(set(
     s.get("Strategy_Type") for s in st.session_state['strategies_data'] if s.get("Strategy_Type")
 )))
 
-# Base strategy types (without quotes)
 base_strategies = ["RSI_ONLY", "MACD_ONLY", "SMA_CROSSOVER", "EMA_CROSSOVER", "BB_BOUNCE",
                    "RSI_SENTIMENT", "MACD_SENTIMENT", "SMA_SENTIMENT", "ML_PREDICT", 
                    "FF_INSPIRED_STRATEGY"]
 
-# Convert all strategy types to quoted form
 quoted_base_strategies = [f'"{s}"' for s in base_strategies]
-
-# Get strategy types from data, assuming they are stored quoted like: "BB_BOUNCE"
 strategy_types_from_data = sorted(list(set(
     s.get("Strategy_Type") for s in st.session_state['strategies_data'] if s.get("Strategy_Type")
 )))
 
-# Combine and deduplicate
 all_strategy_types_set = list(dict.fromkeys(quoted_base_strategies + strategy_types_from_data))
-
-# Get current selection and ensure it's quoted
 selected = st.session_state.get('selected_strategy_type')
 quoted_selected = f'"{selected}"' if selected and not selected.startswith('"') else selected
 
-# Move selected to top
 if quoted_selected in all_strategy_types_set:
     all_strategy_types = [quoted_selected] + [s for s in all_strategy_types_set if s != quoted_selected]
 else:
     all_strategy_types = all_strategy_types_set
 
-# Dropdown
 selected_type = st.selectbox(
     "Select Strategy Type:",
     options=all_strategy_types,
@@ -158,32 +106,48 @@ selected_type = st.selectbox(
     index=0
 )
 
-# Update unquoted version in session state
 unquoted_selected_type = selected_type.strip('"')
-
 if unquoted_selected_type != st.session_state.get('selected_strategy_type'):
     st.session_state['selected_strategy_type'] = unquoted_selected_type
     st.rerun()
 
+# --- Add filters for key metrics ---
+st.markdown("### \U0001F4C9 Filter by Performance Metrics")
+min_sharpe = st.number_input("Minimum Sharpe Ratio", value=0.2)
+min_profit_factor = st.number_input("Minimum Profit Factor", value=1.0)
+min_sortino = st.number_input("Minimum Sortino Ratio", value=0.2)
+min_total_return = st.number_input("Minimum Total Return (%)", value=1.0)
 
 # --- Display Strategies ---
 st.subheader("Available Strategies")
 
+strategies = st.session_state['strategies_data']
+if selected_type != "All":
+    strategies = [s for s in strategies if s.get("Strategy_Type") == selected_type]
+
 filtered_strategies = []
-if selected_type == "All":
-    filtered_strategies = st.session_state['strategies_data']
-else:
-    filtered_strategies = [
-        s for s in st.session_state['strategies_data'] 
-        if s.get("Strategy_Type") == selected_type
-    ]
+for s in strategies:
+    perf = s.get("Performance_Metrics", {})
+    try:
+        sharpe = float(perf.get("Sharpe_Ratio", 0))
+        pf = float(perf.get("Profit_Factor", 0))
+        sortino = float(perf.get("Sortino_Ratio", 0))
+        total_return = float(perf.get("Total_Return", 0)) * 100  # Convert to %
+    except:
+        continue
+
+    if (
+        sharpe >= min_sharpe and
+        pf >= min_profit_factor and
+        sortino >= min_sortino and
+        total_return >= min_total_return
+    ):
+        filtered_strategies.append(s)
 
 if not filtered_strategies:
-    st.info("No strategies found for the selected type, or no data available yet.")
+    st.info("No strategies found for the selected filters or type.")
 else:
-    # Sort strategies for consistent display
     filtered_strategies_sorted = sorted(filtered_strategies, key=lambda x: x.get('Strategy_Name', ''))
-
     for strategy in filtered_strategies_sorted:
         with st.expander(f"**{strategy.get('Strategy_Name', 'N/A')}** - Type: {strategy.get('Strategy_Type', 'N/A')}"):
             st.write(f"**Description:** {strategy.get('Description', 'N/A')}")
@@ -194,7 +158,7 @@ else:
                     st.write(f"- {metric.replace('_', ' ').title()}: {value}")
             else:
                 st.write("- No performance metrics available.")
-            
+
             st.write(f"**Risk Level:** {strategy.get('Risk_Level', 'N/A')}")
             st.write(f"**Recommended Capital:** {strategy.get('Recommended_Capital', 'N/A')}")
             st.write(f"**Last Updated:** {strategy.get('Last_Updated', 'N/A')}")
@@ -202,9 +166,3 @@ else:
 
 st.markdown("---")
 st.write("Data last fetched from Firestore. New data will appear automatically (requires user interaction to trigger rerun).")
-st.write("Please ensure your Firestore database contains a collection named `quant_strategies` under the path `artifacts/streamlit_quant_app/public/data/` with documents having fields like `Strategy_Name`, `Strategy_Type`, `Description`, `Performance_Metrics`, `Risk_Level`, `Recommended_Capital`, `Last_Updated`.")
-
-# You can uncomment this line to force a rerun, but be cautious as it will
-# trigger continuous reruns if data is constantly being pushed.
-# if st.session_state['data_updated']:
-#     st.rerun()
