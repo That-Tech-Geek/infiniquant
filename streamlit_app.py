@@ -124,31 +124,45 @@ strategy_types_from_data = sorted(list(set(
     s.get("Strategy_Type") for s in st.session_state['strategies_data'] if s.get("Strategy_Type")
 )))
 
-# Base strategies
-base_strategies = ["RSI_ONLY", "MACD_ONLY", "SMA_CROSSOVER", "EMA_CROSSOVER", "BB_BOUNCE", 
+# Base strategy types (without quotes)
+base_strategies = ["RSI_ONLY", "MACD_ONLY", "SMA_CROSSOVER", "EMA_CROSSOVER", "BB_BOUNCE",
                    "RSI_SENTIMENT", "MACD_SENTIMENT", "SMA_SENTIMENT", "ML_PREDICT", 
                    "FF_INSPIRED_STRATEGY"]
 
-# Combine all strategies, prioritizing the selected one
-all_strategy_types_set = list(dict.fromkeys(base_strategies + strategy_types_from_data))  # Removes duplicates while preserving order
-selected = st.session_state.get('selected_strategy_type')
+# Convert all strategy types to quoted form
+quoted_base_strategies = [f'"{s}"' for s in base_strategies]
 
-if selected and selected in all_strategy_types_set:
-    all_strategy_types = [selected] + [s for s in all_strategy_types_set if s != selected]
+# Get strategy types from data, assuming they are stored quoted like: "BB_BOUNCE"
+strategy_types_from_data = sorted(list(set(
+    s.get("Strategy_Type") for s in st.session_state['strategies_data'] if s.get("Strategy_Type")
+)))
+
+# Combine and deduplicate
+all_strategy_types_set = list(dict.fromkeys(quoted_base_strategies + strategy_types_from_data))
+
+# Get current selection and ensure it's quoted
+selected = st.session_state.get('selected_strategy_type')
+quoted_selected = f'"{selected}"' if selected and not selected.startswith('"') else selected
+
+# Move selected to top
+if quoted_selected in all_strategy_types_set:
+    all_strategy_types = [quoted_selected] + [s for s in all_strategy_types_set if s != quoted_selected]
 else:
     all_strategy_types = all_strategy_types_set
 
-# Select box
+# Dropdown
 selected_type = st.selectbox(
     "Select Strategy Type:",
     options=all_strategy_types,
     key="strategy_type_selector",
-    index=0  # Already positioned selected at top
+    index=0
 )
 
-# Update session state and rerun if changed
-if selected_type != st.session_state.get('selected_strategy_type'):
-    st.session_state['selected_strategy_type'] = selected_type
+# Update unquoted version in session state
+unquoted_selected_type = selected_type.strip('"')
+
+if unquoted_selected_type != st.session_state.get('selected_strategy_type'):
+    st.session_state['selected_strategy_type'] = unquoted_selected_type
     st.rerun()
 
 
