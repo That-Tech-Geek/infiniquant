@@ -34,8 +34,11 @@ def get_firestore_client():
             secrets_path = os.path.join(os.getcwd(), ".streamlit", "gcp_service_account.json")
             os.makedirs(os.path.dirname(secrets_path), exist_ok=True)
             
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+            
             with open(secrets_path, "w") as f:
-                json.dump(dict(st.secrets["gcp_service_account"]), f)
+                json.dump(creds_dict, f)
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = secrets_path
         
         elif "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ:
